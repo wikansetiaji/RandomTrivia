@@ -9,5 +9,5 @@
 import Foundation
 
 struct FactResponse:Codable{
-    let results:[TriviaModel]
+    let results:[FactModel]
 }

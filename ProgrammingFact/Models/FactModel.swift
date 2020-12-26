@@ -8,7 +8,7 @@
 
 import Foundation
 
-class TriviaModel:Codable{
+class FactModel:Codable{
     var question: Data
     var correct_answer:Data
     

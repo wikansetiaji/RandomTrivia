@@ -8,7 +8,7 @@
 
 import UIKit
 
-class ViewController: UIViewController, UICollectionViewDataSource, UICollectionViewDelegate {
+class CategoryViewController: UIViewController, UICollectionViewDataSource, UICollectionViewDelegate {
     
     @IBOutlet weak var navItem: UINavigationItem!
     @IBOutlet weak var collectionView: UICollectionView!
@@ -19,9 +19,11 @@ class ViewController: UIViewController, UICollectionViewDataSource, UICollection
     var answered = 0
     var score = 0
     
-    var trivias:[TriviaModel] = []
+    var trivias:[FactModel] = []
     
     var category:CategoryModel?
+    
+    var viewModel: FactViewModel = FactViewModel()
     
     func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
         return trivias.count
@@ -108,15 +110,23 @@ class ViewController: UIViewController, UICollectionViewDataSource, UICollection
         loadData()
     }
     
-    enum Error {
-        case zeroItem
-        case noInternet
-    }
-    
     override func viewDidLoad() {
         super.viewDidLoad()
         collectionView.dataSource = self
         collectionView.delegate = self
+        
+        viewModel.factsChanged = { (facts) in
+            self.toggleDataChange(facts: facts)
+        }
+        
+        viewModel.loadingStateChanged = { (isLoading) in
+            self.toggleLoading(isLoading: isLoading)
+        }
+        
+        viewModel.errorChanged = { (error) in
+            self.toggleError(error: error)
+        }
+        
         loadData()
         
         if let temp = category{
@@ -126,79 +136,69 @@ class ViewController: UIViewController, UICollectionViewDataSource, UICollection
         }
     }
     
-    func fetchFacts(successFetch: @escaping ([TriviaModel]) -> Void, errorFetch: @escaping (Error) -> Void) {
-        var id = 9
-        if let temp = category{
-            id = temp.id
+    func toggleLoading(isLoading: Bool){
+        DispatchQueue.main.async {
+            if isLoading{
+                self.collectionView.isHidden = true
+                self.loading.startAnimating()
+            }
+            else{
+                self.loading.stopAnimating()
+            }
         }
-        let url = URL(string: "https://opentdb.com/api.php?amount=5&category=\(id)&type=boolean&encode=base64")!
-
-        let task = URLSession.shared.dataTask(with: url, completionHandler: { (data, response, error) in
-            if let error = error {
-                print("Error: \(error)")
-                errorFetch(Error.noInternet)
-                return
+    }
+    
+    func toggleDataChange(facts: [FactModel]){
+        DispatchQueue.main.async {
+            self.trivias = facts
+            self.collectionView.reloadData()
+            self.collectionView.isHidden = false
+            self.collectionView.scrollToItem(at: IndexPath(row: 0,section: 0), at: .left, animated: true)
+        }
+    }
+    
+    func toggleError(error: APIRequest.Error?){
+        guard let error = error else{return}
+        
+        var title = ""
+        var message = ""
+        
+        if error == .noInternet{
+            title = "Oops!"
+            message = "There is something wrong with the internet connection"
+        }
+        else{
+            title = "Uh ohh"
+            message = "No data was fetched from the API"
+        }
+        
+        DispatchQueue.main.async {
+            let alertController = UIAlertController(title: title, message:
+                                                        message, preferredStyle: .alert)
+            
+            if error == .noInternet{
+                alertController.addAction(UIAlertAction(title: "Try again", style: .default, handler: {
+                    action in
+                    self.loadData()
+                    self.navigationController?.popViewController(animated: true)
+                }))
             }
-
-            guard let httpResponse = response as? HTTPURLResponse,
-                  (200...299).contains(httpResponse.statusCode) else {
-                    print("Error")
-                    errorFetch(Error.noInternet)
-                    return
+            else{
+                alertController.addAction(UIAlertAction(title: "Okay", style: .default, handler: {
+                    action in
+                    self.navigationController?.popViewController(animated: true)
+                }))
             }
-
-            if let data = data{
-                let result = try! JSONDecoder().decode(FactResponse.self, from: data)
-                if (result.results.count == 0){
-                    errorFetch(Error.zeroItem)
-                    return
-                }
-                successFetch(result.results)
-            }
-        })
-        task.resume()
+            
+            self.present(alertController, animated: true, completion: nil)
+        }
     }
     
     func loadData(){
+        guard let category = category else{return}
         answered = 0
         score = 0
-        collectionView.isHidden = true
-        loading.startAnimating()
-        fetchFacts(
-            successFetch: { (data) in
-            self.trivias = data
-            DispatchQueue.main.async {
-                self.collectionView.reloadData()
-                self.loading.stopAnimating()
-                self.collectionView.isHidden = false
-                self.collectionView.scrollToItem(at: IndexPath(row: 0,section: 0), at: .left, animated: true)
-                
-            }
-        },
-            errorFetch: {
-                (type) in
-                DispatchQueue.main.async {
-                    self.loading.stopAnimating()
-                    self.collectionView.isHidden = false
-                    if (type == Error.noInternet){
-                        let alertController = UIAlertController(title: "Oops!", message:
-                            "There is something wrong with the internet connection", preferredStyle: .alert)
-                        alertController.addAction(UIAlertAction(title: "Try again later", style: .default, handler: {
-                            action in self.navigationController?.popViewController(animated: true)
-                        }))
-                        self.present(alertController, animated: true, completion: nil)
-                    }
-                    else if (type == Error.zeroItem){
-                        let alertController = UIAlertController(title: "Oops!", message:
-                            "There is no trivia yet in this category", preferredStyle: .alert)
-                        alertController.addAction(UIAlertAction(title: "Back", style: .default, handler: {
-                            action in self.navigationController?.popViewController(animated: true)
-                        }))
-                        self.present(alertController, animated: true, completion: nil)
-                    }
-                }
-        }
-        )
+        viewModel.fetchCategories(id: category.id)
     }
     
     func next(current:Int){

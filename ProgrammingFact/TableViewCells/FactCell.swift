@@ -18,9 +18,9 @@ class FactCell: UICollectionViewCell {
     @IBOutlet weak var nextButton:UIButton!
     @IBOutlet weak var prevButton:UIButton!
     
-    var viewController:ViewController?
+    var viewController:CategoryViewController?
     
-    var fact:TriviaModel!{
+    var fact:FactModel!{
         didSet{
             update()
         }
